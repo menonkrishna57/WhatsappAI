@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
@@ -42,7 +41,7 @@ async function requestJson(path, options = {}) {
   return payload;
 }
 
-export default function DemoPage() {
+export default function DashboardPage() {
   const [tenantId, setTenantId] = useState('');
   const [orders, setOrders] = useState([]);
   const [payments, setPayments] = useState([]);
@@ -189,11 +188,8 @@ export default function DemoPage() {
   return (
     <main className="app-shell demo-shell">
       <header className="demo-header">
-        <Link to="/" className="back-link">
-          <span aria-hidden="true">←</span> Back to Home
-        </Link>
         <div>
-          <p className="eyebrow eyebrow-demo">WhatsAppAI Demo</p>
+          <p className="eyebrow eyebrow-demo">WhatsAppAI Dashboard</p>
           <h1>Orders, payments, and business link management in one place.</h1>
           <p className="hero-copy">
             Connect to the dashboard API, filter by tenant, and keep the Google Business ID updated without leaving the page.
