@@ -1,12 +1,15 @@
 import os
+import uuid
 from typing import Any, Dict, List, NotRequired, TypedDict, cast
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import Client, create_client
+
+from auth_backend import get_current_tenant_id
 
 
 load_dotenv()
@@ -30,13 +33,26 @@ class OrderRecord(TypedDict):
 	order_id: int
 	created_at: str
 	customer_id: str
-	tenant_id: str
+	tenant_id: int
 	payments: NotRequired[List[str]]
 
 
-class BusinessLinkRequest(BaseModel):
-	tenant_id: str
-	google_business_id: str
+class TenantSettingsPayload(BaseModel):
+	business_name: str
+	whatsapp_number: str | None = None
+	ai_tone: str | None = None
+	currency: str | None = None
+	google_business_id: str | None = None
+
+
+class ProductPayload(BaseModel):
+	name: str
+	price_cents: int
+	material: str | None = None
+	sizes: List[str] | None = None
+	colors: List[str] | None = None
+	in_stock: bool = True
+	description: str | None = None
 
 
 def get_supabase_client() -> Client:
@@ -105,11 +121,10 @@ def health_check() -> JSONResponse:
 	return JSONResponse(status_code=status_code, content=content)
 
 
-
 @app.get("/orders")
 def get_orders(
 	limit: int = Query(default=100, ge=1, le=1000),
-	tenant_id: str | None = Query(default=None, min_length=1),
+	tenant_id: int = Depends(get_current_tenant_id),
 ) -> JSONResponse:
 	"""Fetch rows from public.orders."""
 	try:
@@ -118,8 +133,7 @@ def get_orders(
 			"order_id, created_at, customer_id, tenant_id, payments"
 		)
 
-		if tenant_id:
-			query = query.eq("tenant_id", tenant_id)
+		query = query.eq("tenant_id", tenant_id)
 
 		query_result = query.limit(limit).execute()
 		orders = cast(List[OrderRecord], query_result.data or [])
@@ -140,19 +154,18 @@ def get_orders(
 			detail=f"Failed to fetch orders from Supabase: {exc}",
 		) from exc
 
-#TODO: Check Security of this endpoint, as it allows fetching all payments for a business. Consider adding authentication and authorization checks to ensure only authorized users can access this data.
+
 @app.get("/payments")
 def get_payments(
 	limit: int = Query(default=100, ge=1, le=1000),
-	tenant_id: str | None = Query(default=None, min_length=1)
+	tenant_id: int = Depends(get_current_tenant_id)
 ) -> JSONResponse:
-	"""Fetch payments from public.app_payments, optionally filtered by business."""
+	"""Fetch payments from public.app_payments."""
 	try:
 		supabase = get_supabase_client()
 		query = supabase.schema("public").table("app_payments").select("*")
 
-		if tenant_id:
-			query = query.eq("tenant_id", tenant_id)
+		query = query.eq("tenant_id", tenant_id)
 
 		query_result = query.limit(limit).execute()
 		payments = cast(List[Dict[str, Any]], query_result.data or [])
@@ -173,51 +186,166 @@ def get_payments(
 			detail=f"Failed to fetch payments from Supabase: {exc}",
 		) from exc
 
-#Test Command: curl -X POST "http://127.0.0.1:8000/business-link" -H "Content-Type: application/json" -d "{\"tenant_id\":\"urbanwear\",\"google_business_id\":\"123456789012345\"}"
-@app.post("/business-link")
-def store_business_link(request: BusinessLinkRequest) -> JSONResponse:
-	"""Store or update the Google Business link for a tenant."""
+
+@app.get("/settings")
+def get_settings(tenant_id: int = Depends(get_current_tenant_id)) -> JSONResponse:
+	"""Fetch all settings for the tenant."""
 	try:
 		supabase = get_supabase_client()
+		query_result = supabase.schema("public").table("app_tenants").select(
+			"business_name, whatsapp_number, ai_tone, currency, google_business_id"
+		).eq("tenant_id", tenant_id).execute()
 		
-		# Validate that tenant exists
-		tenant_check = supabase.schema("public").table("app_tenants").select("tenant_id").eq("tenant_id", request.tenant_id).execute()
-		if not tenant_check.data:
-			raise HTTPException(
-				status_code=404,
-				detail=f"Tenant with ID '{request.tenant_id}' not found",
-			)
+		if not query_result.data:
+			raise HTTPException(status_code=404, detail="Tenant settings not found")
+			
+		return JSONResponse(status_code=200, content={"success": True, "settings": query_result.data[0]})
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+@app.put("/settings")
+def update_settings(
+	payload: TenantSettingsPayload,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Update tenant settings."""
+	try:
+		supabase = get_supabase_client()
+		update_data = payload.dict(exclude_unset=True)
 		
-		# Update tenant with google_business_id
-		update_result = supabase.schema("public").table("app_tenants").update(
-			{"google_business_id": request.google_business_id}
-		).eq("tenant_id", request.tenant_id).execute()
+		update_result = supabase.schema("public").table("app_tenants").update(update_data).eq("tenant_id", tenant_id).execute()
 		
 		if not update_result.data:
-			raise HTTPException(
-				status_code=500,
-				detail="Failed to update tenant with business link",
-			)
+			raise HTTPException(status_code=500, detail="Failed to update tenant settings. Ensure tenant exists.")
 		
 		return JSONResponse(
 			status_code=200,
 			content={
 				"success": True,
-				"tenant_id": request.tenant_id,
-				"google_business_id": request.google_business_id,
-				"message": "Business link stored successfully",
+				"message": "Settings updated successfully",
+				"settings": update_result.data[0]
 			},
 		)
 	except HTTPException:
 		raise
 	except Exception as exc:
-		raise HTTPException(
-			status_code=500,
-			detail=f"Failed to store business link: {exc}",
-		) from exc
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+# --- Product Endpoints ---
+
+@app.get("/products")
+def get_products(
+	limit: int = Query(default=100, ge=1, le=1000),
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Fetch products for the tenant."""
+	try:
+		supabase = get_supabase_client()
+		query_result = supabase.schema("public").table("app_products").select("*").eq("tenant_id", tenant_id).limit(limit).execute()
+		products = query_result.data or []
+		return JSONResponse(
+			status_code=200,
+			content={
+				"success": True,
+				"count": len(products),
+				"products": products,
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/products")
+def create_product(
+	payload: ProductPayload,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Create a new product."""
+	try:
+		supabase = get_supabase_client()
+		
+		product_data = payload.dict(exclude_none=True)
+		product_data["tenant_id"] = tenant_id
+		product_data["product_id"] = str(uuid.uuid4()) # Generate a unique product string ID
+		
+		insert_result = supabase.schema("public").table("app_products").insert(product_data).execute()
+		
+		return JSONResponse(
+			status_code=201,
+			content={
+				"success": True,
+				"product": insert_result.data[0] if insert_result.data else None,
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.put("/products/{product_id}")
+def update_product(
+	product_id: str,
+	payload: ProductPayload,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Update an existing product."""
+	try:
+		supabase = get_supabase_client()
+		
+		product_data = payload.dict()
+		# exclude nulls if needed, or explicitly set to null depending on user intent
+		
+		update_result = supabase.schema("public").table("app_products").update(product_data).eq("tenant_id", tenant_id).eq("product_id", product_id).execute()
+		
+		if not update_result.data:
+			raise HTTPException(status_code=404, detail="Product not found or not owned by tenant")
+			
+		return JSONResponse(
+			status_code=200,
+			content={
+				"success": True,
+				"product": update_result.data[0],
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.delete("/products/{product_id}")
+def delete_product(
+	product_id: str,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Delete an existing product."""
+	try:
+		supabase = get_supabase_client()
+		
+		delete_result = supabase.schema("public").table("app_products").delete().eq("tenant_id", tenant_id).eq("product_id", product_id).execute()
+		
+		if not delete_result.data:
+			raise HTTPException(status_code=404, detail="Product not found or not owned by tenant")
+			
+		return JSONResponse(
+			status_code=200,
+			content={
+				"success": True,
+				"message": "Product deleted successfully"
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
 
 
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("view_orders:app", port=8000, reload=True)
