@@ -52,6 +52,8 @@ class ProductPayload(BaseModel):
 	sizes: List[str] | None = None
 	colors: List[str] | None = None
 	in_stock: bool = True
+	is_returnable: bool = True
+	return_window_days: int | None = None
 	description: str | None = None
 
 

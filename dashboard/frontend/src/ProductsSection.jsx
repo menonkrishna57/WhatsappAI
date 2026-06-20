@@ -19,6 +19,8 @@ export default function ProductsSection() {
     sizes: '',
     colors: '',
     in_stock: true,
+    is_returnable: true,
+    return_window_days: 7,
     description: ''
   });
 
@@ -64,6 +66,8 @@ export default function ProductsSection() {
         sizes: product.sizes ? product.sizes.join(', ') : '',
         colors: product.colors ? product.colors.join(', ') : '',
         in_stock: product.in_stock ?? true,
+        is_returnable: product.is_returnable ?? true,
+        return_window_days: product.return_window_days ?? 7,
         description: product.description || ''
       });
     } else {
@@ -75,6 +79,8 @@ export default function ProductsSection() {
         sizes: '',
         colors: '',
         in_stock: true,
+        is_returnable: true,
+        return_window_days: 7,
         description: ''
       });
     }
@@ -103,6 +109,8 @@ export default function ProductsSection() {
       sizes: sizesArray.length ? sizesArray : null,
       colors: colorsArray.length ? colorsArray : null,
       in_stock: formData.in_stock,
+      is_returnable: formData.is_returnable,
+      return_window_days: formData.is_returnable ? (parseInt(formData.return_window_days, 10) || null) : null,
       description: formData.description
     };
 
@@ -192,6 +200,16 @@ export default function ProductsSection() {
               <label style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
                 <input name="in_stock" type="checkbox" checked={formData.in_stock} onChange={handleInputChange} style={{ width: 'auto' }} />
                 In Stock
+              </label>
+            </div>
+            <div className="grid-two">
+              <label style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
+                <input name="is_returnable" type="checkbox" checked={formData.is_returnable} onChange={handleInputChange} style={{ width: 'auto' }} />
+                Returnable
+              </label>
+              <label style={{ opacity: formData.is_returnable ? 1 : 0.5 }}>
+                Return Window (Days)
+                <input name="return_window_days" type="number" min="0" value={formData.return_window_days} onChange={handleInputChange} disabled={!formData.is_returnable} />
               </label>
             </div>
             <label>
