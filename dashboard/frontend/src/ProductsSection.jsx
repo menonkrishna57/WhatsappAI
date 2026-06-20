@@ -8,7 +8,7 @@ export default function ProductsSection() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
+
   // Form state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -96,7 +96,7 @@ export default function ProductsSection() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    
+
     // Convert comma-separated strings to arrays
     const sizesArray = formData.sizes.split(',').map(s => s.trim()).filter(Boolean);
     const colorsArray = formData.colors.split(',').map(s => s.trim()).filter(Boolean);
@@ -115,10 +115,10 @@ export default function ProductsSection() {
     };
 
     try {
-      const url = editingId 
-        ? `${API_BASE_URL}/products/${editingId}` 
+      const url = editingId
+        ? `${API_BASE_URL}/products/${editingId}`
         : `${API_BASE_URL}/products`;
-      
+
       const res = await fetch(url, {
         method: editingId ? 'PUT' : 'POST',
         headers: {
@@ -127,12 +127,12 @@ export default function ProductsSection() {
         },
         body: JSON.stringify(payload)
       });
-      
+
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.detail || 'Failed to save product');
       }
-      
+
       await fetchProducts();
       closeForm();
     } catch (err) {
@@ -142,7 +142,7 @@ export default function ProductsSection() {
 
   const handleDelete = async (productId) => {
     if (!window.confirm('Are you sure you want to delete this product?')) return;
-    
+
     try {
       const res = await fetch(`${API_BASE_URL}/products/${productId}`, {
         method: 'DELETE',
@@ -197,15 +197,15 @@ export default function ProductsSection() {
                 Material
                 <input name="material" value={formData.material} onChange={handleInputChange} />
               </label>
-              <label style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
-                <input name="in_stock" type="checkbox" checked={formData.in_stock} onChange={handleInputChange} style={{ width: 'auto' }} />
-                In Stock
+              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
+                <input name="in_stock" type="checkbox" checked={formData.in_stock} onChange={handleInputChange} style={{ width: 'auto', margin: 0 }} />
+                <span>In Stock</span>
               </label>
             </div>
             <div className="grid-two">
-              <label style={{ flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
-                <input name="is_returnable" type="checkbox" checked={formData.is_returnable} onChange={handleInputChange} style={{ width: 'auto' }} />
-                Returnable
+              <label style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '8px' }}>
+                <input name="is_returnable" type="checkbox" checked={formData.is_returnable} onChange={handleInputChange} style={{ width: 'auto', margin: 0 }} />
+                <span>Returnable</span>
               </label>
               <label style={{ opacity: formData.is_returnable ? 1 : 0.5 }}>
                 Return Window (Days)
@@ -249,9 +249,9 @@ export default function ProductsSection() {
                   </td>
                   <td>{((product.price_cents || 0) / 100).toFixed(2)}</td>
                   <td>
-                    <span style={{ 
-                      padding: '4px 8px', 
-                      borderRadius: '12px', 
+                    <span style={{
+                      padding: '4px 8px',
+                      borderRadius: '12px',
                       fontSize: '0.8em',
                       background: product.in_stock ? '#d1fae5' : '#fee2e2',
                       color: product.in_stock ? '#065f46' : '#991b1b'
