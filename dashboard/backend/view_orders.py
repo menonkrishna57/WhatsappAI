@@ -236,6 +236,31 @@ def update_settings(
 		raise HTTPException(status_code=500, detail=str(exc))
 
 
+# --- Customers Endpoints ---
+
+@app.get("/customers")
+def get_customers(
+	limit: int = Query(default=100, ge=1, le=1000),
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Fetch customers from app_customers for the tenant."""
+	try:
+		supabase = get_supabase_client()
+		query_result = supabase.schema("public").table("app_customers").select("*").eq("tenant_id", tenant_id).limit(limit).execute()
+		customers = query_result.data or []
+		return JSONResponse(
+			status_code=200,
+			content={
+				"success": True,
+				"count": len(customers),
+				"customers": customers,
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
 # --- Product Endpoints ---
 
 @app.get("/products")
