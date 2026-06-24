@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321'; // fallback URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'dummy_key'; // fallback key
+const supabaseUrl = import.meta.env.SUPABASE_URL || 'http://localhost:54321'; // fallback URL
+const supabaseAnonKey = import.meta.env.SUPABASE_KEY || 'dummy_key'; // fallback key
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
