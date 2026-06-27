@@ -6,7 +6,6 @@ import LoginPage from './LoginPage';
 import LandingPage from './LandingPage';
 import DashboardLayout from './components/layout/DashboardLayout';
 import DashboardPage from './DashboardPage';
-import ChatsPage from './ChatsPage';
 import CustomersPage from './CustomersPage';
 import CampaignsPage from './CampaignsPage';
 import AnalyticsPage from './AnalyticsPage';
@@ -22,7 +21,6 @@ export default function App() {
           
           <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/chats" element={<ChatsPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/campaigns" element={<CampaignsPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
