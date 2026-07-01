@@ -22,9 +22,13 @@ app = FastAPI(
 	version="1.0.0",
 )
 
+_default_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+_extra_origins = os.environ.get("ALLOWED_ORIGINS", "")
+_allowed_origins = _default_origins + [o.strip() for o in _extra_origins.split(",") if o.strip()]
+
 app.add_middleware(
 	CORSMiddleware,
-	allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+	allow_origins=_allowed_origins,
 	allow_credentials=True,
 	allow_methods=["*"],
 	allow_headers=["*"],
@@ -57,6 +61,10 @@ class ProductPayload(BaseModel):
 	is_returnable: bool = True
 	return_window_days: int | None = None
 	description: str | None = None
+
+
+class ProductImagePayload(BaseModel):
+	image_url: str
 
 
 def get_supabase_client() -> Client:
@@ -263,6 +271,115 @@ def get_customers(
 	except Exception as exc:
 		raise HTTPException(status_code=500, detail=str(exc))
 
+
+class CustomerNotesPayload(BaseModel):
+	notes: str
+
+
+@app.put("/customers/{customer_id}/notes")
+def update_customer_notes(
+	customer_id: str,
+	payload: CustomerNotesPayload,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Update the notes field for a customer. Requires a `notes` text column
+	on app_customers -- see README for the migration."""
+	try:
+		supabase = get_supabase_client()
+		update_result = (
+			supabase.schema("public")
+			.table("app_customers")
+			.update({"notes": payload.notes})
+			.eq("tenant_id", tenant_id)
+			.eq("customer_id", customer_id)
+			.execute()
+		)
+
+		if not update_result.data:
+			raise HTTPException(status_code=404, detail="Customer not found or not owned by tenant")
+
+		return JSONResponse(
+			status_code=200,
+			content={"success": True, "customer": update_result.data[0]},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+# --- Escalations Endpoints ---
+
+@app.get("/escalations")
+def get_escalations(
+	status: str | None = Query(default=None),
+	limit: int = Query(default=100, ge=1, le=1000),
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Fetch escalations (AI hand-offs to a human) for the tenant, most recent first."""
+	try:
+		supabase = get_supabase_client()
+		query = (
+			supabase.schema("public")
+			.table("app_escalations")
+			.select("*")
+			.eq("tenant_id", tenant_id)
+			.order("created_at", desc=True)
+			.limit(limit)
+		)
+		if status:
+			query = query.eq("status", status)
+		query_result = query.execute()
+		escalations = query_result.data or []
+		return JSONResponse(
+			status_code=200,
+			content={
+				"success": True,
+				"count": len(escalations),
+				"escalations": escalations,
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+class EscalationStatusPayload(BaseModel):
+	status: str
+
+
+@app.put("/escalations/{escalation_id}")
+def update_escalation_status(
+	escalation_id: str,
+	payload: EscalationStatusPayload,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Mark an escalation as resolved/open/etc."""
+	try:
+		supabase = get_supabase_client()
+		update_result = (
+			supabase.schema("public")
+			.table("app_escalations")
+			.update({"status": payload.status})
+			.eq("tenant_id", tenant_id)
+			.eq("escalation_id", escalation_id)
+			.execute()
+		)
+
+		if not update_result.data:
+			raise HTTPException(status_code=404, detail="Escalation not found or not owned by tenant")
+
+		return JSONResponse(
+			status_code=200,
+			content={"success": True, "escalation": update_result.data[0]},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
 # --- Product Endpoints ---
 
 @app.get("/products")
@@ -270,11 +387,28 @@ def get_products(
 	limit: int = Query(default=100, ge=1, le=1000),
 	tenant_id: int = Depends(get_current_tenant_id)
 ) -> JSONResponse:
-	"""Fetch products for the tenant."""
+	"""Fetch products for the tenant, with their images attached."""
 	try:
 		supabase = get_supabase_client()
 		query_result = supabase.schema("public").table("app_products").select("*").eq("tenant_id", tenant_id).limit(limit).execute()
 		products = query_result.data or []
+
+		product_ids = [p["product_id"] for p in products if p.get("product_id")]
+		images_by_product: Dict[str, List[str]] = {}
+		if product_ids:
+			images_result = (
+				supabase.schema("public")
+				.table("product_images")
+				.select("product_id, image_url")
+				.in_("product_id", product_ids)
+				.execute()
+			)
+			for row in images_result.data or []:
+				images_by_product.setdefault(row["product_id"], []).append(row["image_url"])
+
+		for p in products:
+			p["image_urls"] = images_by_product.get(p.get("product_id"), [])
+
 		return JSONResponse(
 			status_code=200,
 			content={
@@ -368,6 +502,85 @@ def delete_product(
 				"success": True,
 				"message": "Product deleted successfully"
 			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+def _assert_product_owned(supabase: Client, product_id: str, tenant_id: int) -> None:
+	"""Raise 404 unless product_id belongs to tenant_id. product_images has no
+	tenant_id of its own, so ownership must be checked via app_products."""
+	owner_check = (
+		supabase.schema("public")
+		.table("app_products")
+		.select("product_id")
+		.eq("product_id", product_id)
+		.eq("tenant_id", tenant_id)
+		.execute()
+	)
+	if not owner_check.data:
+		raise HTTPException(status_code=404, detail="Product not found or not owned by tenant")
+
+
+@app.post("/products/{product_id}/images")
+def add_product_image(
+	product_id: str,
+	payload: ProductImagePayload,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Attach an already-uploaded image (Supabase Storage URL) to a product."""
+	try:
+		supabase = get_supabase_client()
+		_assert_product_owned(supabase, product_id, tenant_id)
+
+		insert_result = (
+			supabase.schema("public")
+			.table("product_images")
+			.insert({"product_id": product_id, "image_url": payload.image_url})
+			.execute()
+		)
+
+		return JSONResponse(
+			status_code=201,
+			content={
+				"success": True,
+				"image": insert_result.data[0] if insert_result.data else None,
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.delete("/products/{product_id}/images/{image_id}")
+def delete_product_image(
+	product_id: str,
+	image_id: str,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Remove a single image row from a product."""
+	try:
+		supabase = get_supabase_client()
+		_assert_product_owned(supabase, product_id, tenant_id)
+
+		delete_result = (
+			supabase.schema("public")
+			.table("product_images")
+			.delete()
+			.eq("id", image_id)
+			.eq("product_id", product_id)
+			.execute()
+		)
+
+		if not delete_result.data:
+			raise HTTPException(status_code=404, detail="Image not found for this product")
+
+		return JSONResponse(
+			status_code=200,
+			content={"success": True, "message": "Image deleted successfully"},
 		)
 	except HTTPException:
 		raise
