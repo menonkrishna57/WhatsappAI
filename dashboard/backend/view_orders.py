@@ -44,11 +44,31 @@ class OrderRecord(TypedDict):
 
 
 class TenantSettingsPayload(BaseModel):
-	business_name: str
+	business_name: str | None = None
 	whatsapp_number: str | None = None
 	ai_tone: str | None = None
 	currency: str | None = None
 	google_business_id: str | None = None
+	business_category: str | None = None
+	description: str | None = None
+	business_address: str | None = None
+	logo_url: str | None = None
+	whatsapp_connected: bool = False
+	ai_auto_reply: bool = True
+	ai_handoff_keywords: str | None = None
+	notify_new_chat: bool = True
+	notify_new_booking: bool = True
+	notify_payment: bool = False
+
+
+class CampaignPayload(BaseModel):
+	name: str
+	description: str | None = None
+	type: str = 'Broadcast'
+	audience_count: int = 0
+	status: str = 'Draft'
+	delivery_rate: float = 0.0
+	sent_on: str | None = None
 
 
 class ProductPayload(BaseModel):
@@ -204,14 +224,34 @@ def get_settings(tenant_id: int = Depends(get_current_tenant_id)) -> JSONRespons
 	"""Fetch all settings for the tenant."""
 	try:
 		supabase = get_supabase_client()
-		query_result = supabase.schema("public").table("app_tenants").select(
+		tenant_result = supabase.schema("public").table("app_tenants").select(
 			"business_name, whatsapp_number, ai_tone, currency, google_business_id"
 		).eq("tenant_id", tenant_id).execute()
 		
-		if not query_result.data:
+		if not tenant_result.data:
 			raise HTTPException(status_code=404, detail="Tenant settings not found")
+		
+		settings_result = supabase.schema("public").table("app_tenant_settings").select(
+			"business_category, description, business_address, logo_url, whatsapp_connected, ai_auto_reply, ai_handoff_keywords, notify_new_chat, notify_new_booking, notify_payment"
+		).eq("tenant_id", tenant_id).execute()
 			
-		return JSONResponse(status_code=200, content={"success": True, "settings": query_result.data[0]})
+		tenant_data = tenant_result.data[0]
+		settings_data = settings_result.data[0] if settings_result.data else {
+			"business_category": None,
+			"description": None,
+			"business_address": None,
+			"logo_url": None,
+			"whatsapp_connected": False,
+			"ai_auto_reply": True,
+			"ai_handoff_keywords": "refund, complaint, manager",
+			"notify_new_chat": True,
+			"notify_new_booking": True,
+			"notify_payment": False
+		}
+		
+		combined_settings = {**tenant_data, **settings_data}
+		
+		return JSONResponse(status_code=200, content={"success": True, "settings": combined_settings})
 	except HTTPException:
 		raise
 	except Exception as exc:
@@ -225,21 +265,20 @@ def update_settings(
 	"""Update tenant settings."""
 	try:
 		supabase = get_supabase_client()
-		update_data = payload.dict(exclude_unset=True)
+		payload_dict = payload.dict(exclude_unset=True)
 		
-		update_result = supabase.schema("public").table("app_tenants").update(update_data).eq("tenant_id", tenant_id).execute()
+		tenant_keys = ["business_name", "whatsapp_number", "ai_tone", "currency", "google_business_id"]
+		tenant_update = {k: v for k, v in payload_dict.items() if k in tenant_keys}
+		settings_update = {k: v for k, v in payload_dict.items() if k not in tenant_keys}
 		
-		if not update_result.data:
-			raise HTTPException(status_code=500, detail="Failed to update tenant settings. Ensure tenant exists.")
+		if tenant_update:
+			supabase.schema("public").table("app_tenants").update(tenant_update).eq("tenant_id", tenant_id).execute()
 		
-		return JSONResponse(
-			status_code=200,
-			content={
-				"success": True,
-				"message": "Settings updated successfully",
-				"settings": update_result.data[0]
-			},
-		)
+		if settings_update:
+			settings_update["tenant_id"] = tenant_id
+			supabase.schema("public").table("app_tenant_settings").upsert(settings_update).execute()
+			
+		return get_settings(tenant_id)
 	except HTTPException:
 		raise
 	except Exception as exc:
@@ -586,6 +625,113 @@ def delete_product_image(
 		raise
 	except Exception as exc:
 		raise HTTPException(status_code=500, detail=str(exc))
+# --- Campaigns Endpoints ---
+
+@app.get("/campaigns")
+def get_campaigns(
+	limit: int = Query(default=100, ge=1, le=1000),
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Fetch campaigns for the tenant."""
+	try:
+		supabase = get_supabase_client()
+		query_result = supabase.schema("public").table("app_campaigns").select("*").eq("tenant_id", tenant_id).order("created_at", desc=True).limit(limit).execute()
+		campaigns = query_result.data or []
+		return JSONResponse(
+			status_code=200,
+			content={
+				"success": True,
+				"count": len(campaigns),
+				"campaigns": campaigns,
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/campaigns")
+def create_campaign(
+	payload: CampaignPayload,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Create a new campaign."""
+	try:
+		supabase = get_supabase_client()
+		campaign_data = payload.dict(exclude_unset=True)
+		campaign_data["tenant_id"] = tenant_id
+		campaign_data["campaign_id"] = str(uuid.uuid4())
+		
+		insert_result = supabase.schema("public").table("app_campaigns").insert(campaign_data).execute()
+		
+		return JSONResponse(
+			status_code=201,
+			content={
+				"success": True,
+				"campaign": insert_result.data[0] if insert_result.data else None,
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.put("/campaigns/{campaign_id}")
+def update_campaign(
+	campaign_id: str,
+	payload: CampaignPayload,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Update an existing campaign."""
+	try:
+		supabase = get_supabase_client()
+		campaign_data = payload.dict(exclude_unset=True)
+		
+		update_result = supabase.schema("public").table("app_campaigns").update(campaign_data).eq("tenant_id", tenant_id).eq("campaign_id", campaign_id).execute()
+		
+		if not update_result.data:
+			raise HTTPException(status_code=404, detail="Campaign not found or not owned by tenant")
+			
+		return JSONResponse(
+			status_code=200,
+			content={
+				"success": True,
+				"campaign": update_result.data[0],
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.delete("/campaigns/{campaign_id}")
+def delete_campaign(
+	campaign_id: str,
+	tenant_id: int = Depends(get_current_tenant_id)
+) -> JSONResponse:
+	"""Delete an existing campaign."""
+	try:
+		supabase = get_supabase_client()
+		delete_result = supabase.schema("public").table("app_campaigns").delete().eq("tenant_id", tenant_id).eq("campaign_id", campaign_id).execute()
+		
+		if not delete_result.data:
+			raise HTTPException(status_code=404, detail="Campaign not found or not owned by tenant")
+			
+		return JSONResponse(
+			status_code=200,
+			content={
+				"success": True,
+				"message": "Campaign deleted successfully"
+			},
+		)
+	except HTTPException:
+		raise
+	except Exception as exc:
+		raise HTTPException(status_code=500, detail=str(exc))
+
 
 
 if __name__ == "__main__":

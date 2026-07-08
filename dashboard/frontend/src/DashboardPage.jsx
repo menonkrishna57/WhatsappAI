@@ -59,11 +59,7 @@ export default function DashboardPage() {
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Good morning, {firstName}</h2>
           <p className="text-gray-500 dark:text-gray-400">Here's what's happening with your business today.</p>
         </div>
-        {usingFallback && (
-          <span className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 text-xs font-semibold px-2.5 py-0.5 rounded border border-yellow-200 dark:border-yellow-800">
-            Mock Data
-          </span>
-        )}
+
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">

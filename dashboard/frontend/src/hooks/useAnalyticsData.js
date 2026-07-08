@@ -78,9 +78,9 @@ export function useAnalyticsData() {
   const metrics = useMemo(() => {
     if (usingFallback) {
       return {
-        revenue: { value: formatCurrency(84250) },
-        customers: { value: 45 },
-        openEscalations: { value: 3 },
+        revenue: { value: formatCurrency(0) },
+        customers: { value: 0 },
+        openEscalations: { value: 0 },
       };
     }
 

@@ -57,21 +57,7 @@ function useSettings() {
         }
       } catch (err) {
         if (!cancelled) {
-          setSettings({
-            ...DEFAULT_SETTINGS,
-            business_name: 'Urban Salon',
-            business_category: 'Beauty, Cosmetic & Personal Care',
-            description: 'Premium salon offering hair, skin and beauty services.',
-            business_address: '123, Park Street, Mumbai, Maharashtra 400001',
-            logo_initials: 'US',
-            whatsapp_number: '+91 98765 43210',
-            whatsapp_connected: true,
-            team_members: [
-              { name: 'Aarya Shah', role: 'Owner', email: 'aarya@urbansalon.com' },
-              { name: 'Dev Patel', role: 'Staff', email: 'dev@urbansalon.com' },
-            ],
-          });
-          setUsingFallback(true);
+          setSettings(DEFAULT_SETTINGS);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -99,13 +85,11 @@ function useSettings() {
       if (!res.ok) throw new Error('Failed to save settings');
       return true;
     } catch (err) {
-      // Backend not available yet -- keep the local optimistic update so the
-      // form still feels responsive, but surface that it wasn't persisted.
       return false;
     }
   }
 
-  return { settings, loading, usingFallback, saveSettings };
+  return { settings, loading, saveSettings };
 }
 
 function Field({ label, children }) {
@@ -407,7 +391,12 @@ function TeamTab({ settings, saveSettings }) {
   return (
     <div className="max-w-xl space-y-5">
       <div className="bg-gray-50 dark:bg-gray-900 rounded-2xl p-6 space-y-4">
-        <h4 className="font-bold text-gray-900 dark:text-gray-100">Team Members</h4>
+        <div className="flex items-center justify-between">
+          <h4 className="font-bold text-gray-900 dark:text-gray-100">Team Members</h4>
+          <span className="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 text-xs font-semibold px-2.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+            Future Feature
+          </span>
+        </div>
         <div className="space-y-2">
           {members.map((m) => (
             <div key={m.email} className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-xl px-4 py-3 border border-gray-100 dark:border-gray-700">
@@ -422,20 +411,20 @@ function TeamTab({ settings, saveSettings }) {
           ))}
           {!members.length && <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No team members yet.</p>}
         </div>
-        <div className="flex gap-2 pt-2">
+        <div className="flex gap-2 pt-2 opacity-50 pointer-events-none">
           <input
             type="email"
             className={inputClass}
             placeholder="teammate@email.com"
             value={newEmail}
             onChange={(e) => setNewEmail(e.target.value)}
+            disabled
           />
-          <button onClick={addMember} className="px-4 py-2.5 bg-gray-900 dark:bg-gray-700 hover:bg-gray-800 dark:hover:bg-gray-600 text-white text-sm font-semibold rounded-xl transition-colors shrink-0">
+          <button onClick={addMember} disabled className="px-4 py-2.5 bg-gray-900 dark:bg-gray-700 hover:bg-gray-800 dark:hover:bg-gray-600 text-white text-sm font-semibold rounded-xl transition-colors shrink-0">
             Invite
           </button>
         </div>
       </div>
-      <SaveBar saving={saving} saved={saved} onSave={handleSave} />
     </div>
   );
 }
@@ -467,7 +456,7 @@ const TABS = [
 ];
 
 export default function SettingsPage() {
-  const { settings, loading, usingFallback, saveSettings } = useSettings();
+  const { settings, loading, saveSettings } = useSettings();
   const [activeTab, setActiveTab] = useState('profile');
 
   const ActiveComponent = TABS.find((t) => t.id === activeTab)?.Component;
@@ -476,11 +465,7 @@ export default function SettingsPage() {
     <div className="h-full flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Settings</h2>
-        {usingFallback && (
-          <span className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 text-xs font-semibold px-2.5 py-0.5 rounded border border-yellow-200 dark:border-yellow-800">
-            Mock Data
-          </span>
-        )}
+
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex-1 flex flex-col min-h-0">

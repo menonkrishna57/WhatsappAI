@@ -124,11 +124,7 @@ export default function AnalyticsPage() {
     <div className="h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Analytics</h2>
-        {usingFallback && (
-          <span className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 text-xs font-semibold px-2.5 py-0.5 rounded border border-yellow-200 dark:border-yellow-800">
-            Mock Data
-          </span>
-        )}
+
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">

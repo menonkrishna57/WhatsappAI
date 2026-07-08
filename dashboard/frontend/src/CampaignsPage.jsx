@@ -1,59 +1,63 @@
-import React, { useMemo, useState } from 'react';
-import { Plus, X, Target, Leaf, Repeat, Sparkles, Send } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Plus, X, Target, Leaf, Repeat, Sparkles, Send, Loader2 } from 'lucide-react';
+import { useAuth } from './AuthContext';
 
-// Campaign data/sending isn't backed by a real endpoint yet (per the brief,
-// this is explicitly mocked) -- kept in local state so the create flow still
-// feels real end-to-end.
-const INITIAL_CAMPAIGNS = [
-  {
-    id: '1',
-    name: 'Summer Offer Campaign',
-    description: '20% off on all hair spa packages',
-    type: 'Broadcast',
-    audience: 2345,
-    sentOn: 'May 10, 2026',
-    status: 'Delivered',
-    deliveryRate: 88,
-    color: 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300',
-    Icon: Target,
-  },
-  {
-    id: '2',
-    name: 'Weekend Special',
-    description: 'Flat 15% off on hair coloring',
-    type: 'Broadcast',
-    audience: 1890,
-    sentOn: 'May 3, 2026',
-    status: 'Delivered',
-    deliveryRate: 92,
-    color: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
-    Icon: Leaf,
-  },
-  {
-    id: '3',
-    name: 'Win Back Customers',
-    description: "We miss you! Here's 25% off",
-    type: 'Follow-up',
-    audience: 1234,
-    sentOn: 'Apr 26, 2026',
-    status: 'Delivered',
-    deliveryRate: 65,
-    color: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
-    Icon: Repeat,
-  },
-  {
-    id: '4',
-    name: 'New Services Launch',
-    description: 'Keratin treatment now available',
-    type: 'Broadcast',
-    audience: 2107,
-    sentOn: 'Apr 20, 2026',
-    status: 'Delivered',
-    deliveryRate: 71,
-    color: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
-    Icon: Sparkles,
-  },
-];
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
+function useCampaigns() {
+  const { accessToken } = useAuth();
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  async function fetchCampaigns() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/campaigns`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new Error('Failed to load campaigns');
+      const data = await res.json();
+      setCampaigns(data.campaigns || []);
+    } catch (err) {
+      setCampaigns([]);
+      setError(err.message || 'Failed to fetch campaigns');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (accessToken) {
+      fetchCampaigns();
+    }
+  }, [accessToken]);
+
+  async function createCampaign(payload) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/campaigns`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to create campaign');
+      }
+      await fetchCampaigns();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  return { campaigns, loading, error, createCampaign };
+}
+
 
 const TABS = ['All', 'Broadcast', 'Promotions', 'Follow-ups'];
 
@@ -90,19 +94,31 @@ function CreateCampaignModal({ open, onClose, onCreate }) {
     onClose();
   }
 
-  function handleCreate() {
-    onCreate({
-      id: String(Date.now()),
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleCreate() {
+    setSaving(true);
+    setError('');
+    
+    const payload = {
       name: form.name || 'Untitled Campaign',
-      description: form.message.slice(0, 60) || 'No message set',
+      description: form.message.slice(0, 60) || null,
       type: form.type,
-      audience: 0,
-      sentOn: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      audience_count: 0,
       status: 'Scheduled',
-      deliveryRate: 0,
-      color: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
-      Icon: Send,
-    });
+      delivery_rate: 0,
+      sent_on: new Date().toISOString()
+    };
+    
+    const result = await onCreate(payload);
+    setSaving(false);
+    
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    
     handleClose();
   }
 
@@ -125,6 +141,11 @@ function CreateCampaignModal({ open, onClose, onCreate }) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {error && (
+            <div className="text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl px-4 py-2.5">
+              {error}
+            </div>
+          )}
           {step === 1 ? (
             <>
               <label className="block">
@@ -204,10 +225,11 @@ function CreateCampaignModal({ open, onClose, onCreate }) {
           ) : (
             <button
               onClick={handleCreate}
-              disabled={!form.message.trim()}
-              className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-semibold text-sm rounded-xl py-2.5 transition-colors"
+              disabled={!form.message.trim() || saving}
+              className="flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-semibold text-sm rounded-xl py-2.5 transition-colors"
             >
-              Create Campaign
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              {saving ? 'Creating...' : 'Create Campaign'}
             </button>
           )}
         </div>
@@ -217,7 +239,7 @@ function CreateCampaignModal({ open, onClose, onCreate }) {
 }
 
 export default function CampaignsPage() {
-  const [campaigns, setCampaigns] = useState(INITIAL_CAMPAIGNS);
+  const { campaigns, loading, error, createCampaign } = useCampaigns();
   const [activeTab, setActiveTab] = useState('All');
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -232,9 +254,6 @@ export default function CampaignsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Campaigns</h2>
-          <span className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 text-xs font-semibold px-2.5 py-0.5 rounded border border-yellow-200 dark:border-yellow-800 mt-1 inline-block">
-            Mock Data
-          </span>
         </div>
         <button
           onClick={() => setModalOpen(true)}
@@ -262,7 +281,17 @@ export default function CampaignsPage() {
 
       <div className="flex-1 bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden flex flex-col">
         <div className="flex-1 overflow-y-auto">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <div className="p-4 space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="h-16 bg-gray-50 dark:bg-gray-900 rounded-xl animate-pulse" />
+              ))}
+            </div>
+          ) : error ? (
+            <div className="h-full flex items-center justify-center text-red-500 dark:text-red-400 text-sm">
+              {error}
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="h-full flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
               No campaigns in this category yet.
             </div>
@@ -279,26 +308,35 @@ export default function CampaignsPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c) => (
-                  <tr key={c.id} className="border-b border-gray-50 dark:border-gray-700/60 last:border-0 hover:bg-gray-50/60 dark:hover:bg-gray-700/40">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${c.color}`}>
-                          <c.Icon size={18} />
+                {filtered.map((c) => {
+                  let Icon = Target;
+                  let color = 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300';
+                  if (c.type === 'Promotions') { Icon = Leaf; color = 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'; }
+                  else if (c.type === 'Follow-up') { Icon = Repeat; color = 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'; }
+
+                  const formattedDate = c.sent_on ? new Date(c.sent_on).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+                  
+                  return (
+                    <tr key={c.campaign_id} className="border-b border-gray-50 dark:border-gray-700/60 last:border-0 hover:bg-gray-50/60 dark:hover:bg-gray-700/40">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${color}`}>
+                            <Icon size={18} />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900 dark:text-gray-100">{c.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">{c.description}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-gray-900 dark:text-gray-100">{c.name}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">{c.description}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{c.type}</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{c.audience.toLocaleString('en-IN')}</td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{c.sentOn}</td>
-                    <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
-                    <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{c.deliveryRate}%</td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{c.type}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{(c.audience_count || 0).toLocaleString('en-IN')}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{formattedDate}</td>
+                      <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{c.delivery_rate || 0}%</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}
@@ -308,7 +346,7 @@ export default function CampaignsPage() {
       <CreateCampaignModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onCreate={(campaign) => setCampaigns((prev) => [campaign, ...prev])}
+        onCreate={createCampaign}
       />
     </div>
   );

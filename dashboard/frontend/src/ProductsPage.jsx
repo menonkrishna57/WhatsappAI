@@ -18,15 +18,7 @@ import StatCard from './StatCard';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
-// Used only if GET /products is unreachable, so the page still renders
-// something useful. Category here requires a `category` column on
-// app_products -- see README. Until that migration is run, the field is
-// simply not saved (the backend silently ignores unknown fields).
-const MOCK_PRODUCTS = [
-  { product_id: '1', name: 'Hair Spa Premium', price_cents: 79900, category: 'Hair Services', in_stock: true, image_urls: [] },
-  { product_id: '2', name: 'Keratin Treatment', price_cents: 499900, category: 'Hair Services', in_stock: true, image_urls: [] },
-  { product_id: '3', name: 'Hydra Facial', price_cents: 249900, category: 'Skincare', in_stock: true, image_urls: [] },
-];
+
 
 const EMPTY_FORM = { name: '', description: '', price: '', category: '', stock: 'In Stock' };
 
@@ -53,9 +45,9 @@ function useProducts() {
       setProducts(data.products || []);
       setUsingFallback(false);
     } catch (err) {
-      setProducts(MOCK_PRODUCTS);
+      setProducts([]);
+      setError(err.message || 'Failed to fetch products');
       setUsingFallback(true);
-      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -66,11 +58,6 @@ function useProducts() {
   }, [accessToken]);
 
   async function createProduct(payload) {
-    if (usingFallback) {
-      const newProduct = { product_id: String(Date.now()), image_urls: [], ...payload };
-      setProducts((prev) => [newProduct, ...prev]);
-      return { ok: true, product: newProduct };
-    }
     try {
       const res = await fetch(`${API_BASE_URL}/products`, {
         method: 'POST',
@@ -90,10 +77,6 @@ function useProducts() {
   }
 
   async function updateProduct(productId, payload) {
-    if (usingFallback) {
-      setProducts((prev) => prev.map((p) => (p.product_id === productId ? { ...p, ...payload } : p)));
-      return { ok: true };
-    }
     try {
       const res = await fetch(`${API_BASE_URL}/products/${productId}`, {
         method: 'PUT',
@@ -112,10 +95,6 @@ function useProducts() {
   }
 
   async function deleteProduct(productId) {
-    if (usingFallback) {
-      setProducts((prev) => prev.filter((p) => p.product_id !== productId));
-      return { ok: true };
-    }
     try {
       const res = await fetch(`${API_BASE_URL}/products/${productId}`, {
         method: 'DELETE',
@@ -130,12 +109,6 @@ function useProducts() {
   }
 
   async function addProductImage(productId, imageUrl) {
-    if (usingFallback) {
-      setProducts((prev) =>
-        prev.map((p) => (p.product_id === productId ? { ...p, image_urls: [...(p.image_urls || []), imageUrl] } : p))
-      );
-      return { ok: true };
-    }
     try {
       const res = await fetch(`${API_BASE_URL}/products/${productId}/images`, {
         method: 'POST',
@@ -379,7 +352,7 @@ function ProductFormPanel({ open, onClose, onSubmit, onUploadImage, initial, kno
 }
 
 export default function ProductsPage() {
-  const { products, loading, usingFallback, createProduct, updateProduct, deleteProduct, addProductImage } = useProducts();
+  const { products, loading, error, usingFallback, createProduct, updateProduct, deleteProduct, addProductImage } = useProducts();
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
   const [availabilityFilter, setAvailabilityFilter] = useState('All Stock');
@@ -436,11 +409,7 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {usingFallback && (
-            <span className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 text-xs font-semibold px-2.5 py-0.5 rounded border border-yellow-200 dark:border-yellow-800">
-              Mock Data
-            </span>
-          )}
+
           <button
             onClick={() => {
               setEditingProduct(null);
@@ -507,6 +476,10 @@ export default function ProductsPage() {
             {[...Array(8)].map((_, i) => (
               <div key={i} className="h-64 bg-gray-50 dark:bg-gray-900 rounded-2xl animate-pulse" />
             ))}
+          </div>
+        ) : error ? (
+          <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center justify-center text-red-500 dark:text-red-400 h-48">
+            {error}
           </div>
         ) : pageItems.length === 0 ? (
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm flex items-center justify-center text-gray-400 dark:text-gray-500 h-48">

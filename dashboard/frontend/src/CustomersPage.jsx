@@ -4,34 +4,7 @@ import { useAuth } from './AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
 
-// Used only if GET /customers is unreachable, so the page still renders
-// something useful. Shape matches the real app_customers table.
-const MOCK_CUSTOMERS = [
-  {
-    customer_id: '1',
-    name: 'Neha Patel',
-    phone: '+919876543210',
-    tag: 'repeat_customer',
-    total_orders: 8,
-    total_spent_cents: 1245000,
-    last_interaction: '2025-05-14T10:30:00Z',
-    preferred_language: 'en',
-    address: 'Mumbai, India',
-    notes: 'Prefers evening appointments.',
-  },
-  {
-    customer_id: '2',
-    name: 'Rahul Sharma',
-    phone: '+919123456789',
-    tag: 'new',
-    total_orders: 1,
-    total_spent_cents: 32000,
-    last_interaction: '2025-05-10T18:15:00Z',
-    preferred_language: 'en',
-    address: 'Pune, India',
-    notes: '',
-  },
-];
+
 
 const TAG_STYLES = {
   repeat_customer: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
@@ -76,7 +49,7 @@ function useCustomers() {
   const { accessToken } = useAuth();
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -91,11 +64,11 @@ function useCustomers() {
         if (!res.ok) throw new Error('Failed to load customers');
         const data = await res.json();
         setCustomers(data.customers || []);
-        setUsingFallback(false);
+        setError(null);
       } catch (err) {
         if (!cancelled) {
-          setCustomers(MOCK_CUSTOMERS);
-          setUsingFallback(true);
+          setCustomers([]);
+          setError(err.message || 'Failed to load customers');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -125,7 +98,7 @@ function useCustomers() {
     }
   }
 
-  return { customers, loading, usingFallback, saveNotes };
+  return { customers, loading, error, saveNotes };
 }
 
 function Avatar({ name, size = 'w-10 h-10', textSize = 'text-sm' }) {
@@ -238,7 +211,7 @@ const TABS = [
 ];
 
 export default function CustomersPage() {
-  const { customers, loading, usingFallback, saveNotes } = useCustomers();
+  const { customers, loading, error, saveNotes } = useCustomers();
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
@@ -269,11 +242,6 @@ export default function CustomersPage() {
     <div className="h-full flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Customers</h2>
-        {usingFallback && (
-          <span className="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-300 text-xs font-semibold px-2.5 py-0.5 rounded border border-yellow-200 dark:border-yellow-800">
-            Mock Data
-          </span>
-        )}
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 min-h-0">
@@ -297,6 +265,8 @@ export default function CustomersPage() {
                   <div key={i} className="h-12 bg-gray-50 dark:bg-gray-900 rounded-xl animate-pulse" />
                 ))}
               </div>
+            ) : error ? (
+              <p className="text-sm text-red-500 dark:text-red-400 text-center py-10">{error}</p>
             ) : filtered.length === 0 ? (
               <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-10">No customers found.</p>
             ) : (
