@@ -3,9 +3,11 @@ import uuid
 from typing import Any, Dict, List, NotRequired, TypedDict, cast
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, Depends
+from fastapi import FastAPI, HTTPException, Query, Depends, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Security
+from pydantic import BaseModel, ConfigDict
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import Client, create_client
 
@@ -44,6 +46,9 @@ class OrderRecord(TypedDict):
 
 
 class TenantSettingsPayload(BaseModel):
+	# Ignore any extra fields sent by the frontend (e.g. logo_initials, team_members)
+	model_config = ConfigDict(extra='ignore')
+
 	business_name: str | None = None
 	whatsapp_number: str | None = None
 	ai_tone: str | None = None
@@ -98,6 +103,37 @@ def get_supabase_client() -> Client:
 		)
 
 	return create_client(supabase_url, supabase_key)
+
+
+def get_authed_supabase_client(token: str) -> Client:
+	"""Create a Supabase client authenticated with the user's JWT.
+	
+	Uses postgrest.auth() to inject the user's Bearer token so that
+	Row-Level Security (RLS) policies are satisfied for all PostgREST
+	calls made through this client.
+	"""
+	supabase_url = os.getenv("SUPABASE_URL")
+	supabase_key = os.getenv("SUPABASE_KEY")
+
+	if not supabase_url or not supabase_key:
+		raise HTTPException(
+			status_code=500,
+			detail="SUPABASE_URL and SUPABASE_KEY must be set in environment variables or .env",
+		)
+
+	client = create_client(supabase_url, supabase_key)
+	# Inject the user JWT so PostgREST evaluates RLS as the logged-in user.
+	# This is the correct approach in supabase-py v2 without needing a refresh token.
+	client.postgrest.auth(token)
+	return client
+
+
+_bearer_scheme = HTTPBearer()
+
+
+def get_token(creds: HTTPAuthorizationCredentials = Security(_bearer_scheme)) -> str:
+	"""Extract the raw Bearer token from the Authorization header."""
+	return creds.credentials
 
 
 @app.get("/health")
@@ -260,12 +296,19 @@ def get_settings(tenant_id: int = Depends(get_current_tenant_id)) -> JSONRespons
 @app.put("/settings")
 def update_settings(
 	payload: TenantSettingsPayload,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_token),
 ) -> JSONResponse:
-	"""Update tenant settings."""
+	"""Update tenant settings.
+	
+	Uses the anon client for app_tenants (service-level write) and an
+	authenticated client (user JWT) for app_tenant_settings so that
+	Row-Level Security policies are satisfied.
+	"""
 	try:
 		supabase = get_supabase_client()
-		payload_dict = payload.dict(exclude_unset=True)
+		authed_supabase = get_authed_supabase_client(token)
+		payload_dict = payload.model_dump(exclude_unset=True)
 		
 		tenant_keys = ["business_name", "whatsapp_number", "ai_tone", "currency", "google_business_id"]
 		tenant_update = {k: v for k, v in payload_dict.items() if k in tenant_keys}
@@ -276,7 +319,8 @@ def update_settings(
 		
 		if settings_update:
 			settings_update["tenant_id"] = tenant_id
-			supabase.schema("public").table("app_tenant_settings").upsert(settings_update).execute()
+			# Use authed client so the user's JWT passes RLS on app_tenant_settings
+			authed_supabase.schema("public").table("app_tenant_settings").upsert(settings_update).execute()
 			
 		return get_settings(tenant_id)
 	except HTTPException:
