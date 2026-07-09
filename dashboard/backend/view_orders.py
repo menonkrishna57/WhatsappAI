@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import Client, create_client
 
-from auth_backend import get_current_tenant_id
+from auth_backend import get_current_tenant_id, get_current_token
 
 
 # Load env from root directory
@@ -193,10 +193,11 @@ def health_check() -> JSONResponse:
 def get_orders(
 	limit: int = Query(default=100, ge=1, le=1000),
 	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Fetch rows from public.orders."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		query = supabase.schema("public").table("orders").select(
 			"order_id, created_at, customer_id, tenant_id, payments"
 		)
@@ -226,11 +227,12 @@ def get_orders(
 @app.get("/payments")
 def get_payments(
 	limit: int = Query(default=100, ge=1, le=1000),
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Fetch payments from public.app_payments."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		query = supabase.schema("public").table("app_payments").select("*")
 
 		query = query.eq("tenant_id", tenant_id)
@@ -256,10 +258,11 @@ def get_payments(
 
 
 @app.get("/settings")
-def get_settings(tenant_id: int = Depends(get_current_tenant_id)) -> JSONResponse:
+def get_settings(tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)) -> JSONResponse:
 	"""Fetch all settings for the tenant."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		tenant_result = supabase.schema("public").table("app_tenants").select(
 			"business_name, whatsapp_number, ai_tone, currency, google_business_id"
 		).eq("tenant_id", tenant_id).execute()
@@ -297,7 +300,7 @@ def get_settings(tenant_id: int = Depends(get_current_tenant_id)) -> JSONRespons
 def update_settings(
 	payload: TenantSettingsPayload,
 	tenant_id: int = Depends(get_current_tenant_id),
-	token: str = Depends(get_token),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Update tenant settings.
 	
@@ -306,7 +309,7 @@ def update_settings(
 	Row-Level Security policies are satisfied.
 	"""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		authed_supabase = get_authed_supabase_client(token)
 		payload_dict = payload.model_dump(exclude_unset=True)
 		
@@ -334,11 +337,12 @@ def update_settings(
 @app.get("/customers")
 def get_customers(
 	limit: int = Query(default=100, ge=1, le=1000),
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Fetch customers from app_customers for the tenant."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		query_result = supabase.schema("public").table("app_customers").select("*").eq("tenant_id", tenant_id).limit(limit).execute()
 		customers = query_result.data or []
 		return JSONResponse(
@@ -363,12 +367,13 @@ class CustomerNotesPayload(BaseModel):
 def update_customer_notes(
 	customer_id: str,
 	payload: CustomerNotesPayload,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Update the notes field for a customer. Requires a `notes` text column
 	on app_customers -- see README for the migration."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		update_result = (
 			supabase.schema("public")
 			.table("app_customers")
@@ -397,11 +402,12 @@ def update_customer_notes(
 def get_escalations(
 	status: str | None = Query(default=None),
 	limit: int = Query(default=100, ge=1, le=1000),
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Fetch escalations (AI hand-offs to a human) for the tenant, most recent first."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		query = (
 			supabase.schema("public")
 			.table("app_escalations")
@@ -436,11 +442,12 @@ class EscalationStatusPayload(BaseModel):
 def update_escalation_status(
 	escalation_id: str,
 	payload: EscalationStatusPayload,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Mark an escalation as resolved/open/etc."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		update_result = (
 			supabase.schema("public")
 			.table("app_escalations")
@@ -468,11 +475,12 @@ def update_escalation_status(
 @app.get("/products")
 def get_products(
 	limit: int = Query(default=100, ge=1, le=1000),
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Fetch products for the tenant, with their images attached."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		query_result = supabase.schema("public").table("app_products").select("*").eq("tenant_id", tenant_id).limit(limit).execute()
 		products = query_result.data or []
 
@@ -509,11 +517,12 @@ def get_products(
 @app.post("/products")
 def create_product(
 	payload: ProductPayload,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Create a new product."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		
 		product_data = payload.dict(exclude_none=True)
 		product_data["tenant_id"] = tenant_id
@@ -538,11 +547,12 @@ def create_product(
 def update_product(
 	product_id: str,
 	payload: ProductPayload,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Update an existing product."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		
 		product_data = payload.dict()
 		# exclude nulls if needed, or explicitly set to null depending on user intent
@@ -568,11 +578,12 @@ def update_product(
 @app.delete("/products/{product_id}")
 def delete_product(
 	product_id: str,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Delete an existing product."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		
 		delete_result = supabase.schema("public").table("app_products").delete().eq("tenant_id", tenant_id).eq("product_id", product_id).execute()
 		
@@ -611,11 +622,12 @@ def _assert_product_owned(supabase: Client, product_id: str, tenant_id: int) -> 
 def add_product_image(
 	product_id: str,
 	payload: ProductImagePayload,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Attach an already-uploaded image (Supabase Storage URL) to a product."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		_assert_product_owned(supabase, product_id, tenant_id)
 
 		insert_result = (
@@ -642,11 +654,12 @@ def add_product_image(
 def delete_product_image(
 	product_id: str,
 	image_id: str,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Remove a single image row from a product."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		_assert_product_owned(supabase, product_id, tenant_id)
 
 		delete_result = (
@@ -674,11 +687,12 @@ def delete_product_image(
 @app.get("/campaigns")
 def get_campaigns(
 	limit: int = Query(default=100, ge=1, le=1000),
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Fetch campaigns for the tenant."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		query_result = supabase.schema("public").table("app_campaigns").select("*").eq("tenant_id", tenant_id).order("created_at", desc=True).limit(limit).execute()
 		campaigns = query_result.data or []
 		return JSONResponse(
@@ -698,11 +712,12 @@ def get_campaigns(
 @app.post("/campaigns")
 def create_campaign(
 	payload: CampaignPayload,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Create a new campaign."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		campaign_data = payload.dict(exclude_unset=True)
 		campaign_data["tenant_id"] = tenant_id
 		campaign_data["campaign_id"] = str(uuid.uuid4())
@@ -726,11 +741,12 @@ def create_campaign(
 def update_campaign(
 	campaign_id: str,
 	payload: CampaignPayload,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Update an existing campaign."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		campaign_data = payload.dict(exclude_unset=True)
 		
 		update_result = supabase.schema("public").table("app_campaigns").update(campaign_data).eq("tenant_id", tenant_id).eq("campaign_id", campaign_id).execute()
@@ -754,11 +770,12 @@ def update_campaign(
 @app.delete("/campaigns/{campaign_id}")
 def delete_campaign(
 	campaign_id: str,
-	tenant_id: int = Depends(get_current_tenant_id)
+	tenant_id: int = Depends(get_current_tenant_id),
+	token: str = Depends(get_current_token)
 ) -> JSONResponse:
 	"""Delete an existing campaign."""
 	try:
-		supabase = get_supabase_client()
+		supabase = get_authed_supabase_client(token)
 		delete_result = supabase.schema("public").table("app_campaigns").delete().eq("tenant_id", tenant_id).eq("campaign_id", campaign_id).execute()
 		
 		if not delete_result.data:

@@ -5,6 +5,12 @@ from supabase import create_client, Client
 
 _bearer = HTTPBearer()
 
+def get_current_token(
+    creds: HTTPAuthorizationCredentials = Security(_bearer)
+) -> str:
+    """Return the raw JWT token."""
+    return creds.credentials
+
 def get_current_tenant_id(
     creds: HTTPAuthorizationCredentials = Security(_bearer)
 ) -> int:
