@@ -1,9 +1,26 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Check } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { uploadImage } from './uploadImage';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+
+function useSaveTimer() {
+  const [saved, setSaved] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    return () => clearTimeout(timerRef.current);
+  }, []);
+
+  function flashSaved() {
+    setSaved(true);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setSaved(false), 2000);
+  }
+
+  return { saved, flashSaved };
+}
 
 const BUSINESS_CATEGORIES = [
   'Beauty, Cosmetic & Personal Care',
@@ -126,7 +143,7 @@ function SaveBar({ saving, saved, onSave }) {
 function BusinessProfileTab({ settings, saveSettings }) {
   const [form, setForm] = useState(settings);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { saved, flashSaved } = useSaveTimer();
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoError, setLogoError] = useState('');
 
@@ -140,8 +157,7 @@ function BusinessProfileTab({ settings, saveSettings }) {
     setSaving(true);
     await saveSettings(form);
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    flashSaved();
   }
 
   async function handleLogoUpload(file) {
@@ -232,7 +248,7 @@ function initialsFromName(name = '') {
 function WhatsAppTab({ settings, saveSettings }) {
   const [form, setForm] = useState(settings);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { saved, flashSaved } = useSaveTimer();
 
   useEffect(() => setForm(settings), [settings]);
 
@@ -240,8 +256,7 @@ function WhatsAppTab({ settings, saveSettings }) {
     setSaving(true);
     await saveSettings(form);
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    flashSaved();
   }
 
   return (
@@ -286,7 +301,7 @@ function WhatsAppTab({ settings, saveSettings }) {
 function AIConfigTab({ settings, saveSettings }) {
   const [form, setForm] = useState(settings);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { saved, flashSaved } = useSaveTimer();
 
   useEffect(() => setForm(settings), [settings]);
 
@@ -294,8 +309,7 @@ function AIConfigTab({ settings, saveSettings }) {
     setSaving(true);
     await saveSettings(form);
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    flashSaved();
   }
 
   return (
@@ -329,7 +343,7 @@ function AIConfigTab({ settings, saveSettings }) {
 function NotificationsTab({ settings, saveSettings }) {
   const [form, setForm] = useState(settings);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { saved, flashSaved } = useSaveTimer();
 
   useEffect(() => setForm(settings), [settings]);
 
@@ -337,8 +351,7 @@ function NotificationsTab({ settings, saveSettings }) {
     setSaving(true);
     await saveSettings(form);
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    flashSaved();
   }
 
   const rows = [
@@ -366,7 +379,7 @@ function TeamTab({ settings, saveSettings }) {
   const [members, setMembers] = useState(settings.team_members || []);
   const [newEmail, setNewEmail] = useState('');
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const { saved, flashSaved } = useSaveTimer();
 
   useEffect(() => setMembers(settings.team_members || []), [settings]);
 
@@ -384,8 +397,7 @@ function TeamTab({ settings, saveSettings }) {
     setSaving(true);
     await saveSettings({ team_members: members });
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    flashSaved();
   }
 
   return (

@@ -92,17 +92,22 @@ class ProductImagePayload(BaseModel):
 	image_url: str
 
 
+_anon_client: Client | None = None
+
 def get_supabase_client() -> Client:
-	supabase_url = os.getenv("SUPABASE_URL")
-	supabase_key = os.getenv("SUPABASE_KEY")
+	global _anon_client
+	if _anon_client is None:
+		supabase_url = os.getenv("SUPABASE_URL")
+		supabase_key = os.getenv("SUPABASE_KEY")
 
-	if not supabase_url or not supabase_key:
-		raise HTTPException(
-			status_code=500,
-			detail="SUPABASE_URL and SUPABASE_KEY must be set in environment variables or .env",
-		)
+		if not supabase_url or not supabase_key:
+			raise HTTPException(
+				status_code=500,
+				detail="SUPABASE_URL and SUPABASE_KEY must be set in environment variables or .env",
+			)
 
-	return create_client(supabase_url, supabase_key)
+		_anon_client = create_client(supabase_url, supabase_key)
+	return _anon_client
 
 
 def get_authed_supabase_client(token: str) -> Client:
@@ -112,16 +117,7 @@ def get_authed_supabase_client(token: str) -> Client:
 	Row-Level Security (RLS) policies are satisfied for all PostgREST
 	calls made through this client.
 	"""
-	supabase_url = os.getenv("SUPABASE_URL")
-	supabase_key = os.getenv("SUPABASE_KEY")
-
-	if not supabase_url or not supabase_key:
-		raise HTTPException(
-			status_code=500,
-			detail="SUPABASE_URL and SUPABASE_KEY must be set in environment variables or .env",
-		)
-
-	client = create_client(supabase_url, supabase_key)
+	client = get_supabase_client()
 	# Inject the user JWT so PostgREST evaluates RLS as the logged-in user.
 	# This is the correct approach in supabase-py v2 without needing a refresh token.
 	client.postgrest.auth(token)
@@ -310,7 +306,7 @@ def update_settings(
 	"""
 	try:
 		supabase = get_authed_supabase_client(token)
-		authed_supabase = get_authed_supabase_client(token)
+		authed_supabase = supabase
 		payload_dict = payload.model_dump(exclude_unset=True)
 		
 		tenant_keys = ["business_name", "whatsapp_number", "ai_tone", "currency", "google_business_id"]
@@ -325,7 +321,7 @@ def update_settings(
 			# Use authed client so the user's JWT passes RLS on app_tenant_settings
 			authed_supabase.schema("public").table("app_tenant_settings").upsert(settings_update).execute()
 			
-		return get_settings(tenant_id)
+		return get_settings(tenant_id, token)
 	except HTTPException:
 		raise
 	except Exception as exc:

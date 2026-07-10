@@ -29,9 +29,31 @@ function useCampaigns() {
   }
 
   useEffect(() => {
-    if (accessToken) {
-      fetchCampaigns();
+    if (!accessToken) return;
+    let cancelled = false;
+
+    async function doFetch() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`${API_BASE_URL}/campaigns`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) throw new Error('Failed to load campaigns');
+        const data = await res.json();
+        if (!cancelled) setCampaigns(data.campaigns || []);
+      } catch (err) {
+        if (!cancelled) {
+          setCampaigns([]);
+          setError(err.message || 'Failed to fetch campaigns');
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
+
+    doFetch();
+    return () => { cancelled = true; };
   }, [accessToken]);
 
   async function createCampaign(payload) {

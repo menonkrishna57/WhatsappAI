@@ -43,9 +43,27 @@ export default function ProductsSection() {
   };
 
   useEffect(() => {
-    if (accessToken) {
-      fetchProducts();
+    if (!accessToken) return;
+    let cancelled = false;
+
+    async function doFetch() {
+      setLoading(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/products`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) throw new Error('Failed to fetch products');
+        const data = await res.json();
+        if (!cancelled) setProducts(data.products || []);
+      } catch (err) {
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     }
+
+    doFetch();
+    return () => { cancelled = true; };
   }, [accessToken]);
 
   const handleInputChange = (e) => {

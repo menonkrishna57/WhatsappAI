@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Search,
   Plus,
@@ -54,7 +54,35 @@ function useProducts() {
   }
 
   useEffect(() => {
-    if (accessToken) fetchProducts();
+    if (!accessToken) return;
+    let cancelled = false;
+
+    async function doFetch() {
+      setLoading(true);
+      setError('');
+      try {
+        const res = await fetch(`${API_BASE_URL}/products`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) throw new Error('Failed to fetch products');
+        const data = await res.json();
+        if (!cancelled) {
+          setProducts(data.products || []);
+          setUsingFallback(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setProducts([]);
+          setError(err.message || 'Failed to fetch products');
+          setUsingFallback(true);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    doFetch();
+    return () => { cancelled = true; };
   }, [accessToken]);
 
   async function createProduct(payload) {
@@ -127,6 +155,7 @@ function useProducts() {
 }
 
 function ProductFormPanel({ open, onClose, onSubmit, onUploadImage, initial, knownCategories }) {
+  const previewUrlRef = useRef(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [pendingFile, setPendingFile] = useState(null);
   const [pendingPreview, setPendingPreview] = useState(null);
@@ -148,10 +177,20 @@ function ProductFormPanel({ open, onClose, onSubmit, onUploadImage, initial, kno
           : EMPTY_FORM
       );
       setPendingFile(null);
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
       setPendingPreview(null);
       setExistingImages(initial?.image_urls || []);
       setError('');
     }
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+    };
   }, [open, initial]);
 
   function update(key, value) {
@@ -160,8 +199,11 @@ function ProductFormPanel({ open, onClose, onSubmit, onUploadImage, initial, kno
 
   function handleFile(file) {
     if (!file) return;
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     setPendingFile(file);
-    setPendingPreview(URL.createObjectURL(file));
+    const url = URL.createObjectURL(file);
+    previewUrlRef.current = url;
+    setPendingPreview(url);
   }
 
   async function handleSubmit() {

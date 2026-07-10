@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { Search, Pencil, MoreHorizontal, Check } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
@@ -63,8 +63,10 @@ function useCustomers() {
         });
         if (!res.ok) throw new Error('Failed to load customers');
         const data = await res.json();
-        setCustomers(data.customers || []);
-        setError(null);
+        if (!cancelled) {
+          setCustomers(data.customers || []);
+          setError(null);
+        }
       } catch (err) {
         if (!cancelled) {
           setCustomers([]);
@@ -165,6 +167,11 @@ function NotesTab({ customer, onSaveNote }) {
   const [draft, setDraft] = useState(customer.notes || '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    return () => clearTimeout(timerRef.current);
+  }, []);
 
   useEffect(() => {
     setDraft(customer.notes || '');
@@ -176,7 +183,8 @@ function NotesTab({ customer, onSaveNote }) {
     await onSaveNote(customer.customer_id, draft);
     setSaving(false);
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setSaved(false), 2000);
   }
 
   return (
