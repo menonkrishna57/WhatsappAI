@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, X, Target, Leaf, Repeat, Sparkles, Send, Loader2 } from 'lucide-react';
+import { Plus, X, Target, Leaf, Repeat, Sparkles, Send, Loader2, Trash2 } from 'lucide-react';
 import { useAuth } from './AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
@@ -77,7 +77,24 @@ function useCampaigns() {
     }
   }
 
-  return { campaigns, loading, error, createCampaign };
+  async function deleteCampaign(campaignId) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/campaigns/${campaignId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to delete campaign');
+      }
+      await fetchCampaigns();
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
+  return { campaigns, loading, error, createCampaign, deleteCampaign };
 }
 
 
@@ -261,9 +278,18 @@ function CreateCampaignModal({ open, onClose, onCreate }) {
 }
 
 export default function CampaignsPage() {
-  const { campaigns, loading, error, createCampaign } = useCampaigns();
+  const { campaigns, loading, error, createCampaign, deleteCampaign } = useCampaigns();
   const [activeTab, setActiveTab] = useState('All');
   const [modalOpen, setModalOpen] = useState(false);
+
+  async function handleDelete(campaignId) {
+    if (window.confirm("Are you sure you want to delete this campaign?")) {
+      const result = await deleteCampaign(campaignId);
+      if (!result.ok) {
+        alert(result.error);
+      }
+    }
+  }
 
   const filtered = useMemo(() => {
     if (activeTab === 'All') return campaigns;
@@ -327,6 +353,7 @@ export default function CampaignsPage() {
                   <th className="px-6 py-3">Sent</th>
                   <th className="px-6 py-3">Status</th>
                   <th className="px-6 py-3">Delivered</th>
+                  <th className="px-6 py-3"></th>
                 </tr>
               </thead>
               <tbody>
@@ -356,6 +383,11 @@ export default function CampaignsPage() {
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{formattedDate}</td>
                       <td className="px-6 py-4"><StatusBadge status={c.status} /></td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{c.delivery_rate || 0}%</td>
+                      <td className="px-6 py-4 text-right">
+                        <button onClick={() => handleDelete(c.campaign_id)} className="text-gray-400 hover:text-red-500 transition-colors p-1" title="Delete Campaign">
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
                     </tr>
                   )
                 })}
