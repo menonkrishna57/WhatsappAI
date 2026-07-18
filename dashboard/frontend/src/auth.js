@@ -74,7 +74,26 @@ export async function getSession() {
 
 export function onAuthChange(callback) {
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-    callback(event, session);
+    // If another device signed in and invalidated this session, force sign-out
+    if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
+      callback(event, session);
+    } else {
+      callback(event, session);
+    }
   });
   return subscription;
+}
+
+/**
+ * Returns a fresh access token, refreshing the session if needed.
+ * Throws if the session is truly expired / invalidated (e.g. concurrent login).
+ */
+export async function getAccessToken() {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || !session) {
+    // Session is gone — sign out cleanly so the UI redirects to login
+    await supabase.auth.signOut();
+    throw new Error('SESSION_EXPIRED');
+  }
+  return session.access_token;
 }

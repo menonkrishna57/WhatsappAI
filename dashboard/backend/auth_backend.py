@@ -33,7 +33,15 @@ def get_current_tenant_id(
     try:
         user_resp = supabase.auth.get_user(token)
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Invalid authentication token: {e}")
+        err_str = str(e).lower()
+        if "session" in err_str and ("not exist" in err_str or "expired" in err_str):
+            # This happens when another device logs into the same account,
+            # invalidating the current session token.
+            raise HTTPException(
+                status_code=401,
+                detail="Your session has expired or was signed in from another device. Please log in again."
+            )
+        raise HTTPException(status_code=401, detail="Invalid or expired authentication token. Please log in again.")
         
     if not user_resp.user:
         raise HTTPException(status_code=401, detail="Invalid token")
