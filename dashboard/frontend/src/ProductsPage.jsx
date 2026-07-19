@@ -163,6 +163,24 @@ function ProductFormPanel({ open, onClose, onSubmit, onUploadImage, initial, kno
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Keeps the panel mounted for the duration of the exit animation, and
+  // drives the enter/exit CSS transition (backdrop fade + slide from right).
+  const [mounted, setMounted] = useState(open);
+  const [animateIn, setAnimateIn] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      // Mount first with the "closed" transform, then flip to "open" on the
+      // next frame so the browser actually animates the transition.
+      const raf = requestAnimationFrame(() => setAnimateIn(true));
+      return () => cancelAnimationFrame(raf);
+    }
+    setAnimateIn(false);
+    const timeout = setTimeout(() => setMounted(false), 300);
+    return () => clearTimeout(timeout);
+  }, [open]);
+
   useEffect(() => {
     if (open) {
       setForm(
@@ -261,14 +279,23 @@ function ProductFormPanel({ open, onClose, onSubmit, onUploadImage, initial, kno
     onClose();
   }
 
-  if (!open) return null;
+  if (!mounted) return null;
 
   const allImages = [...existingImages, ...(pendingPreview ? [pendingPreview] : [])];
 
   return (
     <div className="fixed inset-0 z-30 flex justify-end">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-white dark:bg-gray-800 h-full shadow-2xl flex flex-col">
+      <div
+        className={`absolute inset-0 bg-black/30 transition-opacity duration-300 ease-out ${
+          animateIn ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={onClose}
+      />
+      <div
+        className={`relative w-full max-w-md bg-white dark:bg-gray-800 h-full shadow-2xl flex flex-col transition-transform duration-300 ease-out ${
+          animateIn ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
         <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">{initial ? 'Edit Product' : 'Add New Product'}</h3>
